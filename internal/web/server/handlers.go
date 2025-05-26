@@ -40,9 +40,45 @@ func (ws *Server) handleRenderWebApp(wr http.ResponseWriter, req *http.Request) 
 		return
 	}
 	ws.dLoader.appState.SetInitialFileIndex(req.URL.Path)
-	err = tmpl.ExecuteTemplate(
-		wr, app.TmplName,
-		mdrip.MakeParams(ws.dLoader.navLeftRoot, ws.dLoader.appState))
+
+	// Prepare AppConfig
+	appCfg := AppConfig{ // Assumes AppConfig is defined in the same package (e.g. in webserver.go)
+		RunBlockURL: config.Dynamic(config.RouteRunBlock),
+	}
+	appConfigBytes, err := json.Marshal(appCfg)
+	if err != nil {
+		slog.Error("Failed to marshal AppConfig", "err", err)
+		write500(wr, fmt.Errorf("failed to marshal app config: %w", err))
+		return
+	}
+	appConfigJSONString := string(appConfigBytes)
+
+	// Original params (we might not need all of them if AppState is passed directly)
+	// originalTemplateParams := mdrip.MakeParams(ws.dLoader.navLeftRoot, ws.dLoader.appState)
+
+	// Create a map for template data to ensure AppState and AppConfigJSON are at the root
+	templateData := map[string]interface{}{
+		// AppState is used by the template as {{.AppState...}}
+		"AppState": ws.dLoader.appState,
+		// AppConfigJSON is used by the template as {{.AppConfigJSON}}
+		"AppConfigJSON": appConfigJSONString,
+		// Add other parameters from originalTemplateParams if they are directly accessed
+		// at the root level in the template and are not part of AppState.
+		// For example, if originalTemplateParams had a field like "PageTitle"
+		// and template used {{.PageTitle}}, we'd need to add it here.
+		// For now, we assume AppState and AppConfigJSON are the primary top-level needs
+		// based on the webapp.go template structure.
+		// The call to mdrip.MakeParams might do more than just return AppState,
+		// e.g., it might set specific fields on AppState or return a struct containing AppState.
+		// If mdrip.MakeParams returns a struct that *is* AppState or contains all necessary fields including AppState,
+		// then this approach is fine.
+		// If mdrip.MakeParams returns a struct, and the template needs other fields from this struct
+		// (e.g. {{.NavLeftRootData}}), this map approach would need to explicitly include them.
+		// Given the constraints, providing AppState directly is the most robust way to satisfy {{.AppState...}}
+		// and then adding AppConfigJSON alongside it.
+	}
+
+	err = tmpl.ExecuteTemplate(wr, app.TmplName, templateData)
 	if err != nil {
 		write500(wr, fmt.Errorf("template rendering failure; %w", err))
 		return
@@ -167,39 +203,4 @@ func (ws *Server) handleQuit(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(2 * time.Second)
 		os.Exit(0)
 	}()
-}
-
-func (ws *Server) handleRunCodeBlock(wr http.ResponseWriter, req *http.Request) {
-	slog.Info(" ")
-	slog.Info("Running code block", "url", req.URL)
-	arg := req.URL.Query().Get(config.KeyMdSessID)
-	if len(arg) == 0 {
-		http.Error(wr, "No session id for block codeWriter", http.StatusBadRequest)
-		return
-	}
-	sessID := session.TypeSessID(arg)
-	mdFileIndex := getIntParam(config.KeyMdFileIndex, req, -1)
-	blockIndex := getIntParam(config.KeyBlockIndex, req, -1)
-	slog.Info("args:",
-		config.KeyMdSessID, sessID,
-		config.KeyMdFileIndex, mdFileIndex,
-		config.KeyBlockIndex, blockIndex,
-	)
-
-	if !inRange(
-		wr, config.KeyMdFileIndex,
-		mdFileIndex, len(ws.dLoader.RenderedFiles())) {
-		return
-	}
-	mdFile := ws.dLoader.RenderedFiles()[mdFileIndex]
-
-	if !inRange(wr, config.KeyBlockIndex, blockIndex, len(mdFile.Blocks)) {
-		return
-	}
-	block := mdFile.Blocks[blockIndex]
-
-	if _, err := ws.codeWriter.Write([]byte(block.Code())); err != nil {
-		slog.Error("codeWriter failed", "err", err)
-	}
-	_, _ = fmt.Fprintln(wr, "Ok")
 }

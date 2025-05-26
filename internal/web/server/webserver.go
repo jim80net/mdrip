@@ -80,9 +80,15 @@ func NewServer(dl *DataLoader, r io.Writer) (*Server, error) {
 	}, nil
 }
 
+// AppConfig holds configuration to be passed to the frontend.
+type AppConfig struct {
+	RunBlockURL string `json:"runBlockURL"`
+}
+
 // Serve offers an HTTP service.
 func (ws *Server) Serve(hostAndPort string) (err error) {
 	http.HandleFunc("/favicon.ico", ws.handleFavicon)
+	http.HandleFunc("/static/", ws.handleStaticFiles) // Ensure this is before the catch-all
 	http.HandleFunc(config.Dynamic(config.RouteLissajous), ws.handleLissajous)
 	http.HandleFunc(config.Dynamic(config.RouteQuit), ws.handleQuit)
 	http.HandleFunc(config.Dynamic(config.RouteDebug), ws.handleDebugPage)
@@ -120,6 +126,14 @@ func (ws *Server) makeMetaHandler(fsHandler http.Handler) http.Handler {
 		// just serve a file.
 		fsHandler.ServeHTTP(w, req)
 	})
+}
+
+func (ws *Server) handleStaticFiles(w http.ResponseWriter, r *http.Request) {
+	// This assumes 'internal/web/static' is the root for these static files,
+	// relative to the directory from which the application is run.
+	// More robust would be to use an embedded FS or path relative to executable.
+	fs := http.StripPrefix("/static/", http.FileServer(http.Dir("internal/web/static")))
+	fs.ServeHTTP(w, r)
 }
 
 // ExecResponse is the structure for JSON responses from code execution.
