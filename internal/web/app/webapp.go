@@ -103,7 +103,7 @@ var (
     </style>
   </head>
   <body onload='onLoad()'>
-  {{template "` + mdrip.TmplNameHtml + `" .AppState}}
+  {{template "` + mdrip.TmplNameHtml + `" .MdripParams}}
 
   <hr>
   <div style="padding: 1em;">

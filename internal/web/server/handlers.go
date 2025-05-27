@@ -54,28 +54,18 @@ func (ws *Server) handleRenderWebApp(wr http.ResponseWriter, req *http.Request) 
 	appConfigJSONString := string(appConfigBytes)
 
 	// Original params (we might not need all of them if AppState is passed directly)
-	// originalTemplateParams := mdrip.MakeParams(ws.dLoader.navLeftRoot, ws.dLoader.appState)
+	// Call mdrip.MakeParams after ws.dLoader.LoadAndRender() and SetInitialFileIndex
+	// as appState and navLeftRoot should be populated.
+	mdripParams := mdrip.MakeParams(ws.dLoader.navLeftRoot, ws.dLoader.appState)
 
-	// Create a map for template data to ensure AppState and AppConfigJSON are at the root
+	// Create a map for template data
 	templateData := map[string]interface{}{
-		// AppState is used by the template as {{.AppState...}}
-		"AppState": ws.dLoader.appState,
-		// AppConfigJSON is used by the template as {{.AppConfigJSON}}
+		// MdripParams will be passed to the mdrip.TmplNameHtml template
+		"MdripParams": mdripParams,
+		// AppConfigJSON is used by the main webapp.go template for window.appConfig
 		"AppConfigJSON": appConfigJSONString,
-		// Add other parameters from originalTemplateParams if they are directly accessed
-		// at the root level in the template and are not part of AppState.
-		// For example, if originalTemplateParams had a field like "PageTitle"
-		// and template used {{.PageTitle}}, we'd need to add it here.
-		// For now, we assume AppState and AppConfigJSON are the primary top-level needs
-		// based on the webapp.go template structure.
-		// The call to mdrip.MakeParams might do more than just return AppState,
-		// e.g., it might set specific fields on AppState or return a struct containing AppState.
-		// If mdrip.MakeParams returns a struct that *is* AppState or contains all necessary fields including AppState,
-		// then this approach is fine.
-		// If mdrip.MakeParams returns a struct, and the template needs other fields from this struct
-		// (e.g. {{.NavLeftRootData}}), this map approach would need to explicitly include them.
-		// Given the constraints, providing AppState directly is the most robust way to satisfy {{.AppState...}}
-		// and then adding AppConfigJSON alongside it.
+		// AppState is used by the main webapp.go template for Title, makeEmptyCache, InitialRender
+		"AppState": ws.dLoader.appState,
 	}
 
 	err = tmpl.ExecuteTemplate(wr, app.TmplName, templateData)
